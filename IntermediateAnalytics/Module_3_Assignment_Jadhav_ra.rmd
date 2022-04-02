@@ -1,0 +1,185 @@
+---
+title: "Module 3 Assignment — Multiple Linear Regression Modeling"
+author: "Rahul Jadhav"
+date: "1/30/2022"
+output:
+  html_document:
+     theme: cerulean
+     toc: true
+     toc_float: true
+---
+
+```{r setup, include=FALSE, comment = " ", cache=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+## This code checks if the package is installed or not, if not installed it will install them
+packages<-(c("TOC","dplyr","gtools","broom","knitr","car"))
+package.check <- lapply(
+  packages,
+  function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+lapply(packages,require, character.only = TRUE)
+
+```
+
+```{r}
+main_dataset <- read.csv("AmesHousing.csv")
+```
+## INTRODUCTION
+In this assignment we are to build Multiple Linear regression model for predicting Sale Price of houses in Ames. Sale Price is response variable we will use highest and lowest correlation variable we found using correlation assignment.
+We are also going to estimate a linear regression model, learn to interpret results of the module, and evaluate the fitted model.
+
+
+## MODELS
+We developed 2 model, one with variables having highest correlation and one with variables having lowest correlation to learn about difference between the best fit and worst fit model
+
+```{r}
+Model1 <- lm(SalePrice ~ Overall.Qual + 
+                Gr.Liv.Area + 
+                Year.Built + 
+                Fireplaces, 
+              data = main_dataset)
+
+Model2 <- lm(SalePrice ~ Enclosed.Porch +
+                 Misc.Val +
+               Yr.Sold,
+               data = main_dataset)
+```
+
+
+## QUESTION 1 
+```{r, comment = " ", }
+summary(Model1)
+```
+
+From the above summary you can see that the R-squared value of the model is 0.76, we can say that the model is 76% fit for predicting the Sale Price of House in Ames,IA.
+There is not much difference in Multiple R-Squared and Adjusted R-squared value
+Also the p-value is is less than the significant level(0.05) .
+This model explains a lot of variation within data and is significant. Thus this model is best fit for Predicting the Sale Price of the house in Ames,IA.
+```{r, comment = " ", }
+summary(Model2)
+```
+From the above summary, we can see that the Multiple R squared is 0.01, thus we can say that the model is 1% fit for predicting the sale Price price of the house in Ames,IA.
+The p value is less than the significant value(0.05)
+This model does not explains much of variation within data and is significant. thus this model is worst fit model for predicting the Sale Price of the house in Ames, IA.
+
+### AUGMENTED MODEL
+```{r, comment = " ", }
+Augmented_Model1 <- Model1 %>%
+  augment() %>%  sample(size=10) %>%
+  select (SalePrice, .fitted, .resid)
+Augmented_Model1
+```
+From the table you can see that the Actual sale Price and our Predicted Sale Price of the model and their difference.
+You can see from the first observation :
+<ul>
+  <li>The Actual Sale Price is 215000</li>
+  <li>The Predicted Sale Price (fitted model sale price ) is 199803.981</li>
+  <li>The residual is 1.519602e+04</li>
+</ul>
+
+```{r, comment = " ", }
+Augmented_Model2 <- Model2 %>%
+  augment() %>%  sample(size=10) %>%
+  select (SalePrice, .fitted, .resid)
+Augmented_Model2
+```
+From the table you can see that the Actual sale Price and our Predicted Sale Price of the model and their difference.
+You can see from the first observation :
+ <ul>
+ <li>The Actual Sale Price is 21500</li>
+ <li>The Predicted Sale Price(Fitted model Sale Price) is 180495.7</li>
+ <li>The Residual is 3.450428.e+04</li>
+ </ul>
+ 
+## QUESTION 2
+### Residual Plotting
+
+```{r,figures-side, fig.show="hold", out.width="50%", results='hide', comment = " ", }
+Model1_res <- resid(Model1)
+Model2_res <- resid(Model2)
+
+plot(fitted(Model1), Model1_res) + 
+  abline(0,0)+
+  title("PLOT - 01- Residual With High coefficient and T statistic")
+
+plot(fitted(Model2), Model2_res) + 
+  abline(0,0)+
+  title("PLOT - 02- Residual with Low coefficient and T statistic")
+
+```
+
+
+From PLOT -01 , we can see that :
+<ul>
+  <li> The response variable for this model was Sale Price and the predictor variables were Overall Quality, General Living aream Year of Built, and Fire Place</li>
+  <li>observations are evenly distributed.</li>
+  <li>There is no pattern present.</li>
+  <li>They are cluster around lower digit in y axis</li>
+  <li>Density of outlier is less in best fit model</li>
+  
+</ul>  
+From PLOT -02, we can see that :
+<ul>
+  <li>The response variable for this model was Sale Price and the Predictor variables were Enclosed Porch, Value of miscellaneous feature and Year of Sold</li>
+  <li>observation are not evenly distributed.</li>
+  <li>There is clear a pattern or trend present</li>
+  <li>Density of outlier is more in best fit model</li>
+</ul>
+### Q-Q PLOT
+
+```{r,fig.show="hold", out.width="50%", results='hide', comment = " "}
+qqPlot(Model1)+
+  title("Q-Q PLOT MODEL 1")
+
+qqPlot(Model2)+
+  title("Q-Q PLOT MODEL 2")
+```
+Using Q-q plot we can learn about the observations that follows the normal line.
+The blue shade area shows observations that fall in 95% confidence interval.
+From plot of model 1 we can wee that most of the observation follow the normal line and there are less outliers
+From plot of model 2 we can see that most of the observation do not follow the normal line.
+
+### OUTLIER
+
+#### OUTLIER TEST MODEL 1
+```{r, comment = " ", }
+outlierTest(Model1 , n=5)
+```
+The above table shows the top 5 outliers for model 1.
+The observation no 1499 have studentized residual of -10.73
+
+
+#### OUTLIER TEST MODEL 2
+```{r, comment = " ", }
+outlierTest(Model2,n=5)
+```
+The above table shows the Top 5 outlier for model 2.
+The observation no 1768 have Studentized residual of +7.24
+
+
+
+### MULTI COLLINEARITY
+```{r, comment = " ", }
+## model 1
+vif(Model1)
+
+## model 2
+vif(Model2)
+```
+Multicollinearity help us to know if the predictor variables (independent) have correlation or not.
+If the value is below 5 we can say that there is not correlation between the Predictor variables.
+From the above multicollinearity test we can say that the model1 and model2 predictor variables have no correlation among them.
+
+
+## REFERENCE
+<ul> 
+<li>» Interpreting Residual Plots to Improve Your Regression. (2021, April 12). Qualtrics. https://www.qualtrics.com/support/stats-iq/analyses/regression-guides/interpreting-residual-plots-improve-regression/</li>
+<li>Residual plots | Exploring bivariate numerical data | AP Statistics | Khan Academy. (2017, July 12). YouTube. https://www.youtube.com/watch?v=VamMrPZ-8fc</li>
+<li>Z. (2021, April 22). How to Create a Residual Plot in R. Statology. https://www.statology.org/residual-plot-r/ </li>
+<li>Visualizing two variables - Characterizing bivariate relationships. (n.d.). DataCamp. https://campus.datacamp.com/courses/correlation-and-regression-in-r/visualizing-two-variables?ex=4</li>
+</ul>

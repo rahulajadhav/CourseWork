@@ -1,0 +1,69 @@
+---
+title: "Splitting_Dataset"
+author: "Rahul Jadhav"
+date: "1/21/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r}
+library(readr)
+library(tidyr)
+require(tidyverse)
+Main_Dataset1 <- read.csv("archive (1)/Chicago_Crimes_2001_to_2004.csv")
+
+## REMOVED 3 OBSERVATION WHICH WERE NOT APPROPRIATE
+Main_Dataset1 <- subset(Main_Dataset1, Main_Dataset1$Year == 2001 | Main_Dataset1$Year == 2002 | Main_Dataset1$Year == 2003 | Main_Dataset1$Year == 2004)
+
+Main_Dataset2 <- readr::read_csv("archive (1)/Chicago_Crimes_2005_to_2007.csv")
+colnames(Main_Dataset2) <- c("X",
+                   "ID",
+                   "Case.Number",
+                   "Date",
+                   "Block",
+                   "IUCR",
+                   "Primary.Type",
+                   "Description",
+                   "Location.Description",
+                   "Arrest",
+                   "Domestic",
+                   "Beat",
+                   "District",
+                   "Ward",
+                   "Community.Area",
+                   "FBI.Code",
+                   "X.Coordinate",
+                   "Y.Coordinate",
+                   "Year",
+                   "Updated.On",
+                   "Latitude",
+                   "Longitude",
+                   "Location")
+
+Main_Dataset3 <- read.csv("archive (1)/Chicago_Crimes_2008_to_2011.csv")
+Main_Dataset4 <- read.csv("archive (1)/Chicago_Crimes_2012_to_2017.csv")
+
+Main_Dataset <- rbind(Main_Dataset1,Main_Dataset2,Main_Dataset3,Main_Dataset4)
+
+
+Main_Dataset$Parts <- sample(factor(rep(1:3, length.out=nrow(Main_Dataset)),labels=paste0("Part", 1:3)))
+
+table(Main_Dataset$Parts)
+
+
+Chicago_Crimes_2001_to_2017_Part1 <- subset(Main_Dataset, Main_Dataset$Parts == "Part1")
+write.csv(Chicago_Crimes_2001_to_2017_Part1, "Chicago_Crimes_2001_to_2017_Part1.csv")
+Chicago_Crimes_2001_to_2017_Part2 <- subset(Main_Dataset, Main_Dataset$Parts == "Part2")
+write.csv(Chicago_Crimes_2001_to_2017_Part2, "Chicago_Crimes_2001_to_2017_Part2.csv")
+Chicago_Crimes_2001_to_2017_Part3 <- subset(Main_Dataset, Main_Dataset$Parts == "Part3")
+write.csv(Chicago_Crimes_2001_to_2017_Part3, "Chicago_Crimes_2001_to_2017_Part3.csv")
+
+```
+
+By using above code i have randomly added value as Part1, part2, part3 to the newly created variable parts and then i have created subset as per it.

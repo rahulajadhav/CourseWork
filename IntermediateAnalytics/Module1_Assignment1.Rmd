@@ -1,0 +1,239 @@
+---
+title: "Module1_Assignment1"
+author: "Rahul Jadhav"
+date: "1/14/2022"
+output: 
+  html_document:
+     theme: cerulean
+     toc: true
+     toc_float: true
+---
+
+```{r setup, include=FALSE,cache = TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+packages<-(c("dplyr","psych","ggplot2","vtable","maps","fastDummies","broom","ggpubr","stargazer", "TOC","pastecs","scales"))
+package.check <- lapply(
+  packages,
+  function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+lapply(c("dplyr","psych","ggplot2","vtable","maps","fastDummies","broom","stargazer","TOC","ggpubr","pastecs","scales"),require, character.only = TRUE)
+
+```
+
+## INTRODUCTION
+
+In this assignment we are going to perform correlation analysis on dataset provided to us. The data set provided to us is "Ames Housing" which consist of 2903 observations and 82 variables such as Sale Price, Sale.type, Yr.sold etc. 
+
+Correlation analysis in a research is a statistical method used to measure the strength of the relationship between two variables and compute their association.
+There are 2 types of correlation relationship among variables.
+a) Positive, Negative and zero correlation:
+  positive correlation - When the increase in one variable is followed by a corresponding increase in the other variable or vice versa, the correlation between these variable is said to be positive correlation.
+  
+  Negative correlation - When the increase in one variable is followed by a corresponding decrease in the other variable  or vice versa, then the correlation between these variable is said to be negative correlation.
+  
+  Zero correlation - When there is no relationship between two variables i.e the increase and decrease in one variable does not affect other variable then these type f relationship among the variable is said to be Zero correlation. 
+  
+b)Linear or Curvilinear correlation -
+  Linear correlation - It is the ratio of change between the two variables either in the same direction or opposite direction and graphical representation of the one variable with respect to other variable is a straight line
+  
+  Curvilinear correlation - In this type of relation, first with the increase of one variable, the second variable increases proportionately up to some point, after that with an increase in the first variable the second variable starts decreasing.
+
+Among the available variables we are going to select few variables, preform data cleaning and see their correlation with Sale Price
+```{r, include=FALSE}
+Ames_dataset <- read.csv('C:/Users/ralph/Desktop/studies/intermediate analytics/Module 1/AmesHousing.csv')
+test <- subset(Ames_dataset, select = c(Overall.Qual,
+                                               Gr.Liv.Area,
+                                               Year.Built,
+                                               Year.Remod.Add,
+                                               Fireplaces,
+                                               SalePrice,
+                                               X1st.Flr.SF,
+                                               TotRms.AbvGrd,
+                                               Wood.Deck.SF,
+                                               Open.Porch.SF,
+                                               X2nd.Flr.SF,
+                                               Lot.Area,
+                                               Bedroom.AbvGr,
+                                               Screen.Porch,
+                                               Pool.Area,
+                                               Mo.Sold,
+                                               X3Ssn.Porch,
+                                               Overall.Cond,
+                                               MS.SubClass,
+                                               Lot.Frontage,
+                                               Mas.Vnr.Area,
+                                               BsmtFin.SF.1,
+                                               BsmtFin.SF.2,
+                                               Bsmt.Unf.SF,
+                                               Total.Bsmt.SF,
+                                               Low.Qual.Fin.SF,
+                                               Bsmt.Full.Bath,
+                                               Bsmt.Half.Bath,
+                                               Kitchen.AbvGr,
+                                               Garage.Yr.Blt,
+                                               Garage.Cars,
+                                               Garage.Area,
+                                               Enclosed.Porch,
+                                               Misc.Val,
+                                               Yr.Sold
+                                               ))
+cor(test)
+cor_dataset <- subset(Ames_dataset, select = c(Overall.Qual,
+                                               Gr.Liv.Area,
+                                               Year.Built,
+                                               Year.Remod.Add,
+                                               Fireplaces,
+                                               SalePrice))
+
+```
+## Summary Statistic
+```{r}
+psych::describe(cor_dataset) %>%
+  dplyr::select(count = n,
+         Mean = mean,
+         Median = median,
+         Standard_Deviation = sd,
+         )%>%
+  mutate(
+    Coefficient_Variation = Standard_Deviation/Mean
+  )
+
+```
+The above Output is the summary table that provide us with Count, Mean, Median, Standard_Deviation and Coefficient_Variation(CV) of the variables we have choose for our correlation. From above table we can say that most of the variable have CV <= 1 which states that the data elements are closer to the mean.
+
+
+```{r}
+group_by_overall_Quality <- cor_dataset %>%
+  group_by(Overall.Qual) %>%
+  summarize(Mean_Saleprice = mean(SalePrice))
+
+ggplot(group_by_overall_Quality,aes(x=Overall.Qual,y=Mean_Saleprice))+
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 0,size = 15))+
+  labs(title = "Sale price based on the Quality of property")+
+  labs(x="Quality",y="Sale price") +
+  scale_y_continuous(labels = comma)
+```
+From the above Plotting we can see that Houses with higher quality are tends to be sold at higher price. So an individual can manage to get Houses with average quality and remodel the property and save bunch of money.You can see the above plot is left skewed.
+```{r}
+group_by_Heating_Quality <- Ames_dataset %>%
+  group_by(Heating.QC) %>%
+  summarize(Mean_Saleprice = mean(SalePrice)) %>%
+  dplyr::mutate( Heating.QC = ifelse(Heating.QC =="Ex", "Excellent",
+                                     ifelse(Heating.QC =="Fa", "Fair",
+                                            ifelse(Heating.QC =="Gd", "Good",
+                                                   ifelse(Heating.QC =="Po","Poor", "TypicalAverage")))))
+ggplot(group_by_Heating_Quality,aes(x=Heating.QC,y=Mean_Saleprice))+
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 0,size = 15))+
+  labs(title = "SalePrice Based on heating Quality of the property")+
+  labs(x="Heating Quality",y="SalePrice")
+
+```
+From the above plot we can see that Houses with Excellent Heating Quality have better sale Price that Houses with Good, Fair etc heating Quality.
+
+## Correlation Analysis
+
+```{r}
+ggcorrplot::ggcorrplot(cor(cor_dataset),
+                       title = "Correlation Plot:01 Correlation table"
+                       ,type = "lower",
+                       lab = TRUE)
+
+```
+From the above correlation table we can observe the correlation of various variables from the data set. Taking Sale Price variable under consideration we can see that the Sale Price has strong correlation with General living area.
+
+```{r}
+ext<- subset(Ames_dataset, select=c(Exter.Qual,SalePrice)) %>%
+  mutate (fastDummies::dummy_cols(Ames_dataset$Exter.Qual)) %>%
+  dplyr::select( Excellent = .data_Ex,
+              Fair = .data_Fa,
+              Good = .data_Gd,
+              Average_Typical = .data_TA,
+              SalePrice)
+
+ggcorrplot::ggcorrplot(cor(ext, method = c("pearson")),
+                       title = "Correlation Plot:02 Sale Price and Exterior Quality"
+                       ,type = "lower",
+                       lab = TRUE)
+
+
+kit<- subset(Ames_dataset, select=c(Kitchen.Qual,SalePrice)) %>%
+  mutate (fastDummies::dummy_cols(Ames_dataset$Kitchen.Qual)) %>%
+  dplyr::select( Excellent = .data_Ex,
+              Fair = .data_Fa,
+              Good = .data_Gd,
+              Average_Typical = .data_TA,
+              Poor = .data_Po,
+              SalePrice)
+
+
+ggcorrplot::ggcorrplot(cor(kit, method = c("pearson")),
+                       title = "Correlation Plot:03 Sale Price and Kitchen Quality"
+                       ,type = "lower",
+                       lab = TRUE)
+
+
+```
+
+Above Plots are correlation based on categorical data. the Correlation Plot:02 provides Correlation between Sale Price and Exterior Quality of the House. From the correlation plot we can see that house with Excellent And Good Exterior Quality have high Sale Price than House with Fair or Typical or Average Exterior Quality
+Correlation Plot:03 we can see the correlation between Sale Price and Kitchen Quality. We can observe that Houses with Excellent or Good Kitchen Quality have Higher Sale Price than Houses with Fair , Poor , or Average kitchen Quality.
+
+
+
+
+## Correlation test
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+rbind(cbind(Correlaion = "Overall quality and sale price",
+               tidy(cor.test(cor_dataset$SalePrice,cor_dataset$Overall.Qual))),
+      cbind(Correlaion = "General living area and Sale Price",
+               tidy(cor.test(cor_dataset$SalePrice,cor_dataset$Gr.Liv.Area))),
+      cbind(Correlaion = "Year of build and Sale Price",
+               tidy(cor.test(cor_dataset$SalePrice,cor_dataset$Year.Built))),
+      cbind(Correlaion = "Year of remodelling or additions and Sale Price",
+               tidy(cor.test(cor_dataset$SalePrice,cor_dataset$Year.Remod.Add))),
+      cbind(Correlaion = "Property with Fireplace and Sale Price",
+               tidy(cor.test(cor_dataset$SalePrice,cor_dataset$Fireplaces)))
+      
+      
+      ) %>%
+  dplyr::select(Correlaion,DF =parameter,R = estimate, statistic, p.value, conf.low, conf.high) %>%
+  mutate(
+    
+    R = round(R,3),
+    statistic = round(statistic,3),
+    conf.low = round(conf.low,3),
+    conf.high = round(conf.high,3),
+    p.value = round(p.value,3)
+  )
+```
+The Above plot contains Correlation test conducted on various relationship like Overall Quality and Sale Price, General living Area and Sale Price etc. We can see that the p.value is smaller than 0.05 that means in our case there is a significance relationship between Sale Price and Overall Quality of house, General Living area, Year of build, Year of remodeling or additions.
+
+## ANALYSIS
+<>In this Assignment we studied and performed Correlation analysis on the data set provided.
+
+<>We could learn that there are factors that have strong correlation with the sale price of house such as Overall 
+
+<>quality, general living area have the highest correlation with the sale price.
+
+<>We also performed correlation on categorical data i.e exterior quality and kitchen quality of house. we could learn from this analysis that the quality of kitchen and exterior above good can have high sale price.
+
+<>We also learned that heating quality has correlation with sale price.
+
+
+## Biblography
+
+
+a)Kabacoff, R. (2011). R in action: Data analysis and graphics with R. Manning.
+
+b)Contributors, D. C. (n.d.). Data visualization with ggplot2. Datacarpentry. https://datacarpentry.org/R-ecology-lesson/04-visualization-ggplot2.html#Plotting_with_ggplot2
+
+c)Making your R Markdown Pretty. (2021, January 28). YouTube. https://www.youtube.com/watch?v=v048ru5v0BE

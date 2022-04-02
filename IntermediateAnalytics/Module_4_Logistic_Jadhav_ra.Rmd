@@ -1,0 +1,199 @@
+---
+title: "Module_4_Logistic"
+author: "Rahul Jadhav"
+date: "2/8/2022"
+output:
+  html_document:
+     theme: cerulean
+     toc: true
+     toc_float: true
+---
+
+```{r setup, include=FALSE, comment = " "}
+knitr::opts_chunk$set(echo = TRUE)
+## This code checks if the package is installed or not, if not installed it will install them
+packages<-(c("TOC","dplyr","gtools","broom","knitr","car","pacman","stargazer","effects","ggplot2"))
+package.check <- lapply(
+  packages,
+  function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+lapply(packages,require, character.only = TRUE)
+
+```
+
+
+```{r}
+main_dataset <- read.csv("AmesHousing.csv")
+
+##Creating subset of relevant continuous variable
+cleaned_dataset <- main_dataset[sapply(main_dataset, is.integer) | sapply(main_dataset, is.numeric) ]
+cleaned_dataset <- cleaned_dataset %>%
+  dplyr::select(-c(ï..Order,
+                    PID,
+                    Year.Remod.Add,
+                    Garage.Yr.Blt,
+                    Mo.Sold,
+                    Yr.Sold
+                    ))
+
+```
+
+## INTRODUCTION
+In this assignment we are going to perform logistic Regression in Ames Dataset. In Machine Learning, Logistic Regression is commonly used to address categorization issues. When the answer response is a binary(1 and 0 )or 2 level factor variable such as yes or no, Male or Female, etc. and can be converted into binary, Logistic Regression is used.
+
+The way Logistic regression differs from linear regression is, in linear regression you can use continuous variable and in Logistic regression you use Binary variable as your response variable. Also, A straight line is the best fit line in linear regression, and an S-shaped line, sometimes known as a "Squiggle," is the best fit line in logistic regression.
+
+The coefficient of logistic regression can interpreted using 3 scales, Probability scale, Odds Scale and Log Odds Scale.
+
+## SUMMARY TABLE
+
+```{r}
+psych::describe(cleaned_dataset) %>%
+  dplyr::select(count = n,
+         Mean = mean,
+         Median = median,
+         Standard_Deviation = sd,
+         )%>%
+  mutate(
+    Coefficient_Variation = Standard_Deviation/Mean
+  )
+```
+
+## PREPARING DATASET
+
+For logistic regression we will convert selling price of the house into 1 and 0. For making it more sensible we will create a new variable called binary_sp and if the selling price is above 200,000 as 1 and 0 if selling price is lesser than 200,000.
+```{r}
+sapply(cleaned_dataset, function(x) sum(is.na(x)))
+cleaned_dataset$binary_sp <- ifelse(cleaned_dataset$SalePrice > 200000,1,0) 
+table(cleaned_dataset$binary_sp)
+```
+
+## DEVELOPING MODEL AND ITS INTERPRETATION
+
+```{r}
+
+Model1 <- glm(binary_sp ~ Overall.Qual + 
+                Gr.Liv.Area + 
+                Year.Built + 
+                Fireplaces , data= cleaned_dataset , family = "binomial")
+summary(Model1)
+exp(coef(Model1))
+```
+
+<ul>
+<li>The intercept for our Model is 1.91</li>
+<li>The sale price increases by 3.83 by every increase in rating Quality of the house</li>
+<li>The Sale Price increases by 1.00 by every increase in the General living area sqaure feet</li>
+<li>The sale Price increases by 1.03 by every increase in the build year of the house</li>
+<li>The sale Price increases by 2.44 by every increase in the Pool Area of the house</li>
+</ul>
+
+###The Ratio of computed odds ration:
+
+For showing the table with coefficients on the odds scale we have used the stargazer function. 
+
+```{r, comment= " "}
+coef_Model1 <-stargazer(Model1,odd.ratio = TRUE ,type = "text")
+
+```
+
+### Augmented Logistic Regression Model:
+
+
+```{r, comment= " "}
+augment_model1<- augment(Model1, type.predict = "response") %>%
+  mutate(.fitted = round(.fitted, 3), .resid = round(.resid, 3),
+         .hat=round(.hat, 3), .cooksd = round(.cooksd, 3),
+         price_hat = round(.fitted))%>%
+  dplyr::select(c("binary_sp", ".fitted", ".resid", "price_hat"))
+augment_model1
+```
+
+Broom package provides us with a function called Augment. Augment function provides us with important information about our model like the Fitted Value , residual value and price_hat
+
+## Visualization :
+
+### SalePrice and Overall Quality of House:
+
+```{r, comment= " "}
+ggplot(cleaned_dataset, aes(x= Overall.Qual, y=binary_sp))+
+  geom_jitter(width = 0, height = 0.05)+
+  scale_x_continuous(breaks = 1:10)+
+  geom_smooth(method = "glm", method.args = list(family="binomial"), color = "blue")+
+  xlab("Over all Quality of House")+
+  ylab("Binary Selling Price")
+
+```
+
+S-shaped line helps us to determine th changing trend of the probability of scale of 0 and 1 with 1 unit change in the predictor variables.
+From the Above plot we can see that the Selling Price of the house is 200000 dollar if the quality of the house is above 7. 
+
+
+### SalePrice and General Living Area
+
+```{r, comment= " "}
+ggplot(cleaned_dataset, aes(x= Gr.Liv.Area, y=binary_sp))+
+  geom_jitter(width = 0, height = 0.05)+
+  geom_smooth(method = "glm", method.args = list(family="binomial"), color = "blue")+
+  xlab("General Living Area")+
+  ylab("Binary Selling Price")
+
+```
+
+
+From the Above plot we can see that the Selling Price of the house is 200000 dollar if the General Living Area is Above 2000 sq feet.
+
+### SalePrice and Year of built
+
+```{r, comment= " "}
+ggplot(cleaned_dataset, aes(x= Year.Built, y=binary_sp))+
+  geom_jitter(width = 0, height = 0.05)+
+  geom_smooth(method = "glm", method.args = list(family="binomial"), color = "blue")+
+  xlab("Year")+
+  ylab("Binary Selling Price")
+
+```
+
+From the Above plot we can see that the Selling Price of the house is 200000 dollar if the year of the house is more than 1980. 
+
+### SalePrice and No of fire Places in the house
+
+```{r, comment= " "}
+ggplot(cleaned_dataset, aes(x= Fireplaces, y=binary_sp))+
+  geom_jitter(width = 0, height = 0.05)+
+  geom_smooth(method = "glm", method.args = list(family="binomial"), color = "blue")+
+  xlab("No of FirePlaces")+
+  ylab("Binary Selling Price")
+
+```
+
+From the Above plot we can see that the Selling Price of the house is 200000 dollar if the house has fire place. 
+
+### Effect Plots
+
+The effect plots show us how predicted probabilities change when we change our independent variables.
+
+```{r, fig.width= 20}
+
+Model2 <- glm(binary_sp ~ Overall.Qual + 
+                Gr.Liv.Area + 
+                Year.Built + 
+                Fireplaces +
+                Overall.Cond+
+                Garage.Cars
+
+                , data= cleaned_dataset , family = "binomial")
+plot(allEffects(Model2))
+
+```
+
+## References:
+<ul>
+<li> Multiple and Logistic Regression in R [DataCamp]</li>
+<li>StatQuest: Logistic Regression. (2018, March 5). YouTube. https://www.youtube.com/watch?v=yIYKR4sgzI8&list=PLblh5JKOoLUKxzEP5HA2d-Li7IJkHfXSe</li>
+</ul>

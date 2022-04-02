@@ -1,0 +1,504 @@
+---
+title: "Chicago Crimes"
+author: "Rahul Jadhav"
+date: "2/16/2022"
+output: 
+  html_document:
+     theme: cerulean
+     toc: true
+     toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+packages<-(c("dplyr","psych","ggplot2","fastDummies","broom","gtools", "scales","skimr","car","caret", "stargazer","effects"))
+package.check <- lapply(
+  packages,
+  function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+lapply(c(packages),require, character.only = TRUE)
+```
+
+## DATA PREPARATION
+
+For Data Preparation here we are going to merge related Crime Time, Create Indicator variables for Arrests and Domestics, Create Month, Day and Time variable from Date Variables.We also converted all character variables to factor variables
+
+```{r}
+main_dataset <- read.csv("Chicago_Crimes_2001_to_2017_Part2.csv")
+
+cleaned_data <- main_dataset %>%   
+  mutate(
+    Primary.Type = ifelse(Primary.Type=="HOMICIDE","HOMICIDE",
+                          ifelse(Primary.Type=="CRIM SEXUAL ASSAULT" | 
+                                   Primary.Type=="SEX OFFENSE" , "SEXUAL OFFENCE",
+                                 ifelse(Primary.Type == "ASSAULT","ASSAULT",
+                                        ifelse(Primary.Type == "ROBBERY", "ROBBERY",
+                                               ifelse(Primary.Type == "NON-CRIMINAL" |
+                                                        Primary.Type == "NON - CRIMINAL" |
+                                                        Primary.Type == "NON-CRIMINAL (SUBJECT SPECIFIED)", "NON-CRIMINAL",
+                                                      main_dataset$Primary.Type)
+                                               )
+                                        )
+                                 )
+                          ),
+    Arrest = ifelse(
+      Arrest == "False" | Arrest == "FALSE", 0 , 1),
+    Domestic = ifelse(
+      Domestic == "False" | Domestic == "FALSE", 0, 1),
+    Date = as.POSIXlt(Date, format = "%m/%d/%Y %I:%M:%S %p")
+  ) %>%
+  sample_n(20000,replace = FALSE) %>%
+  select(-c(X.1,X,ID,Case.Number,Updated.On,Location,IUCR,Beat,X.Coordinate,Y.Coordinate))
+
+cleaned_data <- cleaned_data %>%
+  mutate(
+    Month = format(cleaned_data$Date, format="%m"),
+    Day = format(cleaned_data$Date, format="%d"),
+    Time = format(cleaned_data$Date, format="%H")
+  )
+
+
+cleaned_data[sapply(cleaned_data, is.character)] <- lapply(
+  cleaned_data[sapply(
+    cleaned_data, 
+    is.character)]
+  ,as.factor)
+
+character_dataset <- cleaned_data[sapply(cleaned_data, is.factor)]
+
+```
+
+
+## Summary Statistics 
+```{r}
+
+## Frequency Distribution of Primary Type and arrests
+library("gmodels")
+CrossTable(cleaned_data$Primary.Type, cleaned_data$Arrest,prop.t=FALSE, prop.r=FALSE, prop.c=FALSE,prop.chisq=FALSE)
+
+summary(character_dataset)
+
+```
+
+
+From the cross tabulation table we can observe the cross tabulatation between Primary type of crime cases and Arrests.
+We can also see the summary of factor variables which show us how many observations belongs to various types in variables.
+
+## BASIC ANALYSIS
+### Crime based on FBI Code 
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(scales)
+group_by_primary_type <- cleaned_data %>%
+  group_by(FBI.Code,Arrest) %>%
+  summarise(count = n())%>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange(desc(percentage)) 
+
+
+ggplot(group_by_primary_type,aes(x=FBI.Code,y=count,fill= Arrest))+
+  geom_bar(position="dodge", stat="identity")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_y_continuous(label = comma)+
+  ggtitle("Bar Plot : 01 Crimes reportd in chicago as Per FBI Codes and Arrested Data")
+
+
+```
+
+
+From the above plot we can see that cases belonging to FBI Code 06 are reported more followed by 08B. if observed properly cases belonging to FBI code 18 and 16 have more arrests in respective to the cases been reported. 
+
+### Year-Wise Crime rate
+```{r}
+library(dplyr)
+library(ggplot2)
+group_by_Year <- cleaned_data %>%
+  group_by(Year,Arrest) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Year))
+
+
+ggplot(group_by_Year,aes(x=Year,y=count, fill= Arrest))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 02 Yearly Crime rate of Chicago from 2001 to 2017")+
+  scale_x_continuous(breaks = 2000:2017)
+
+
+
+```
+
+
+<ul>
+<li>From the above plot we can see that the crime rate is in decreasing trend after the year 2008.</li>
+<li>We can also observe that from 2014 to 2016 the arrest rate have decreased.</li>
+</ul>
+
+
+### ARREST
+```{r}
+group_by_Arrest <- cleaned_data %>%
+  group_by(Arrest)  %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  mutate(ypos = cumsum(percentage)+ 2.7*percentage )
+ggplot(group_by_Arrest, aes(x="", y=percentage, fill=Arrest)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme(legend.position="none") +
+  theme_void()+
+  ggtitle("Pie chart of Arrest")+ 
+  geom_text(y = group_by_Arrest$ypos,label=group_by_Arrest$percentage)+
+  ggtitle("Pie Chart : 01 Arrests among the total Crime reported")
+```
+
+
+Among All the reported cases 71.58 % of the cases have no arrest made.
+
+
+### District wise Crime rate
+
+```{r}
+group_by_District <- cleaned_data %>%
+  group_by(District,Arrest) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  )
+ggplot(group_by_District,aes(x=District,y=count, fill= Arrest))+
+  geom_bar(stat="identity")+
+  ggtitle("Bar Plot : 04 District wise cases")+
+  xlab("District")+
+  scale_x_continuous(breaks = (0:25))
+
+```
+
+<ul>
+<li>From 2001 to 2017 district 8 have the highest crime cases reported Where as District 20 have the least(Assuming that there is no district 13,21,23 observations in the data set)</li>
+<li>We can also observe that district 11 have the highest arrests been made compared to other districts</li>
+</ul>
+
+
+### TimeBased Crime rate
+```{r,figures-side, fig.show="hold", out.width="50%", results='hide', comment = " ", }
+
+group_by_Year <- cleaned_data %>%
+  group_by(Year,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Year))
+
+
+ggplot(group_by_Year,aes(x=Year,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 05 Yearly Crime rate of Chicago from 2001 to 2017")+
+  scale_x_continuous(breaks = c(2000:2017))
+
+
+group_by_Month <- cleaned_data %>%
+  group_by(Month,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Month))
+
+
+ggplot(group_by_Month,aes(x=Month,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 06 Monthly Crime rate of Chicago from 2001 to 2017")
+
+group_by_Day <- cleaned_data %>%
+  group_by(Day,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Day))
+
+
+ggplot(group_by_Day,aes(x=Day,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 07 Monthly Crime rate of Chicago from 2001 to 2017")
+
+group_by_Time <- cleaned_data %>%
+  group_by(Time,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Time))
+
+
+ggplot(group_by_Time,aes(x=Time,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 08 Monthly Crime rate of Chicago from 2001 to 2017")
+
+
+```
+
+<ul>
+<li>From the above plot we can see that the crime rate is in decreasing trend after the year 2008.</li>
+<li>We can also observe that from 2014 to 2016 the arrest rate have decreased.</li>
+<li>Crime reported in the month of November and December are less as compared to rest of the months</li>
+<li>Crime reported in 1st of every month is the highest . where as the crime reported at the end of the month is least</li>
+<li>The crime reported during 1 to 5 in the morning are less. we can observe that there is a trend in crime reported after morning 5</li>
+</ul>
+
+## CORRELATION
+
+Checking correlation between Crime reported under FBI Code and arrests
+
+```{r, fig.width=20, fig.height=15}
+library(fastDummies)
+library(ggcorrplot)
+cor_dataset <- cleaned_data %>%
+  select(FBI.Code,Arrest,Domestic)
+
+cor_dataset <- dummy_cols(cor_dataset, remove_selected_columns = TRUE)
+ggcorrplot(cor(cor_dataset),
+                       lab_size = 5,
+                       tl.cex = 20,
+                       title = "Correlation Plot:01 Correlation table"
+                       ,type = "lower",
+                       lab = TRUE)
+``` 
+
+From the correlation plot you can see that Crime under FBI CODE 18 have strongest correlation with arrest.
+
+## CHI-SQUARE ANALYSIS
+Performing Chi-Square test to examine if Sale Price varies by Neighborhood
+
+H0 (null hypothesis)        -> There is no relationship between Arrest and Crime based on FBI Code
+H1 (Alternative Hypothesis) -> There is relationship between Arrest and Crime based on FBI Code
+```{r}
+library(broom)
+chi <- cleaned_data
+myChisq <- xtabs(~ FBI.Code + Arrest, data = chi)
+
+tidy(chisq.test(myChisq))%>%
+  select(
+    method,
+    DF = parameter,
+    p.value,
+    statistic
+  )%>%
+  mutate(
+    statistic = round(statistic,2)
+  )
+```
+
+
+Interpretation :
+A chi-square test was performed to examine the relation between Arrest and Crime based on FBI Code in Chicago. The relation between these variables was significant, X^2 (1,N=24) = 8337.13, p = 0. 
+
+Since the p.value is very significant, we will reject the null hypothesis.
+
+## 2 WAY ANOVA TEST 
+Performing ANOVA test to examine if District varies by Primary type of crime and Arrests.
+
+H0(null hypothesis) -> 
+  * Crime based on FBI Code and Arrest has no effect on District. Also there is no interaction affect on District due to Crime based on FBI Code and Arrest.
+  
+H1(Alternative hypothesis) -> 
+  * Crime based on FBI Code and Arrest has effect on District. Also there is interaction affect on District due to Crime based on FBI Code and Arrest.
+
+
+```{r }
+two_way_fit <- aov(Arrest ~ as.factor(District) * FBI.Code , data=cleaned_data)
+tidy(two_way_fit)%>%
+  mutate(
+    sumsq = signif(sumsq, digits = 2),
+    p.value = round(p.value,3),
+    statistic = round(statistic,3)
+    
+  )
+
+```
+
+
+Interpretation :
+A two-way ANOVA was performed to analyze the effect of Crime based on FBI Code and Arrest on District.
+A two-way ANOVA revealed that -
+Simple main effects analysis showed that Crime based on FBI Code did have a statistically significant effect on District (p = 0).
+
+ 
+Simple main effects analysis showed that Arrest did have a statistically significant effect on Sale Price (p = 0).
+
+
+
+## Spliting Dataset into train and test sets
+
+Here we are going to sample our main dataset into 70-30 ratio as Train and test dataset respectively.
+```{r}
+set.seed(123)
+trainIndex <- createDataPartition(cleaned_data$Arrest, p= 0.70, list = FALSE)
+train <- cleaned_data[trainIndex,]
+test <- cleaned_data[-trainIndex,]
+```
+
+
+## Linear Regression Model 
+Here we are going to check if crime rate has anything to do with the District, Time.
+
+```{r}
+Lm_train_dataset <- train %>%
+  group_by(District, Time) %>%
+  summarise(count = n()) 
+
+Lm_test_dataset <- test %>%
+  group_by(District, Time) %>%
+  summarise(count = n()) 
+```
+
+### Linear Regression Summary of Train Dataset
+
+```{r}
+Model1 <- (lm(count ~ Time + as.factor(District) , data = Lm_train_dataset))
+summary(Model1)
+```
+
+From the above summary of the linear regression model for train dataset developed by us you can see that the R squared value is 0.81. that means our model is 81% fit for predicting the crime rate.
+The is not much difference in the R-square value and the Adjusted R-squared Value.
+Also the Pvalue is below the significant level (0.05)
+This model explains a lot of variation within data and is significant. Thus this model is best fit for Predicting the Crime rate of Chicago.
+
+### Linear Regression Summary of Test Dataset
+
+```{r}
+Model2 <- (lm(count ~ Time + as.factor(District) , data = Lm_test_dataset))
+summary(Model2)
+```
+
+From the above summary of the linear regression model for test sample dataset developed by us you can see that the R squared value is 0.69. that means our model is 69% fit for predicting the crime rate.
+The is not much difference in the R-square value and the Adjusted R-squared Value.
+Also the P-value is below the significant level (0.05)
+This model explains a lot of variation within data and is significant. Thus this model is best fit for Predicting the Crime rate of Chicago.
+
+### Residual Plotting of the models
+
+```{r,fig.show="hold", out.width="50%", results='hide', comment = " ", }
+Model1_res <- resid(Model1)
+Model2_res <- resid(Model2)
+
+plot(fitted(Model1), Model1_res) + 
+  abline(0,0)+
+  title("PLOT - 01- Residual Of TRAIN dataset")
+
+plot(fitted(Model2), Model2_res) + 
+  abline(0,0)+
+  title("PLOT - 02- Residual of TEST dataset")
+```
+
+<ul>
+<li>The response variable for this model was Crime rate and the predictor variables were District and Time</li>
+<li>observations are evenly distributed</li>
+</ul>
+
+### Q-Q PLOT
+
+```{r,fig.show="hold", out.width="50%", results='hide', comment = " "}
+qqPlot(Model1_res)+
+  title("Q-Q PLOT MODEL 1")
+
+qqPlot(Model2_res)+
+  title("Q-Q PLOT MODEL 2")
+```
+
+
+From plot of model 1 and model 2 we can wee that most of the observation follow the normal line and there are less outliers
+
+
+
+
+### MULTI COLLINEARITY
+```{r, comment = " ", }
+## model 1
+vif(Model1)
+
+## model 2
+vif(Model2)
+```
+
+
+Multicollinearity help us to know if the predictor variables (independent) have correlation or not.
+If the value is below 5 we can say that there is not correlation between the Predictor variables.
+
+
+
+## Logistic Regression
+
+We developed 2 model, one with variables having highest correlation and one with variables having lowest correlation to learn about difference between the best fit and worst fit model
+
+```{r}
+
+logistic_dataset_train <- train %>%
+  group_by(Primary.Type,Domestic,Arrest,District) %>%
+  summarise(count = n())%>%na.omit()
+
+logistic_dataset_test <- train %>%
+  group_by(Primary.Type,Domestic,Arrest,District) %>%
+  summarise(count = n())%>%na.omit()
+
+model3 <- glm(Arrest ~ Primary.Type ,data = logistic_dataset_train, family = "binomial")
+summary(model3)
+
+model4 <- glm(Arrest ~ Primary.Type ,data = logistic_dataset_test, family = "binomial")
+summary(model4)
+
+
+```
+
+<ul>
+<li>The intercept for our Model1 and model2 are -1.5041 and </li>
+<li>Every 1.504 decrease in the Arrest been made in the case of Arson results : </li> 
+<li>a ) in Increased in the arrest made in the case of Assault by 1.35</li>
+<li>b ) in Increased in the arrest made in the case of BATTERY by 1.50</li>
+<li>c ) in Increased in the arrest made in the case of BURGLARY by  1.32</li>
+<li>d ) in Increased in the arrest made in the case of CRIMINAL DAMAGE by 1.12</li>
+<li>e ) in Increased in the arrest made in the case of CRIMINAL TRESPASS by 1.62</li>
+<li>f ) in Increased in the arrest made in the case of DECEPTIVE PRACTICE by 1.22</li>
+<li>g ) in Increased in the arrest made in the case of BATTERY by 1.50</li>
+<li>j ) in decrease in the arrest made in the case of HUMAN TRAFFICKING by 15.06</li>
+
+</ul>
+### The Ratio of computed odds ratio:
+
+For showing the table with coefficients on the odds scale we have used the stargazer function. 
+
+```{r, comment= " ", out.width="50%"}
+coef_Model1 <-stargazer(model3,odd.ratio = TRUE ,type = "text")
+coef_Model2 <-stargazer(model4,odd.ratio = TRUE ,type = "text")
+```
+
+
+The computed odds ratio of the Module generate using test and train data are similar.
+

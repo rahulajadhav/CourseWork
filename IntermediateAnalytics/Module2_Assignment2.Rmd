@@ -1,0 +1,218 @@
+---
+title: "Assignment 2"
+author: "Rahul Jadhav"
+date: "1/25/2022"
+output:
+  html_document:
+     theme: cerulean
+     toc: true
+     toc_float: true
+---
+
+```{r setup, include=FALSE, comment = " ", cache=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+## This code checks if the package is installed or not, if not installed it will install them
+packages<-(c("dplyr","gtools","broom","knitr"))
+package.check <- lapply(
+  packages,
+  function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+lapply(packages,require, character.only = TRUE)
+
+
+```
+
+
+
+## Data Preparation
+
+For performing Chi square we created a new variable called SalePrice_ntile and used "quantcut" to creating a factor variable using the quantiles of a continuous variable called Sale Price.
+
+
+```{r, include=FALSE, comment = FALSE}
+# reading the csv file into a data frame; this has header row
+# ensure to specify proper file location
+main_dataset <- read.csv("AmesHousing.csv")
+# Checking the class of the dataset
+class(main_dataset)
+# peaking the dataset
+View(main_dataset)
+```
+
+```{r, comment = " ", include= FALSE}
+# taking integer into different dataset to see the summary
+num_dataset <- main_dataset[sapply(main_dataset, is.integer)]
+character_dataset <- main_dataset[sapply(main_dataset, is.factor)]
+```
+
+```{r, comment = " "}
+x<- quantile(main_dataset$SalePrice, probs = c(0, 0.20, 0.40, 0.60, 0.80, 1))
+x
+
+main_dataset$SalePrice_ntile <- quantcut(main_dataset$SalePrice,5)
+levels(main_dataset$SalePrice_ntile) <- c("q1","q2","q3","q4","q5")
+summary(main_dataset$SalePrice_ntile)
+
+```
+
+
+## Question-1 Chi-Square Test: 
+Performing Chi-Square test to examine if Sale Price varies by Neighborhood
+
+H0 (null hypothesis)        -> There is no relationship between Sale Price and Neighborhood
+H1 (Alternative Hypothesis) -> There is a relationship between Sale Price and Neighborhood
+
+
+```{r , comment = " "}
+options(width = 100)
+
+# Chi Square Testing:  Whether Sale Price  is dependent on Neighborhood
+myChisq <- xtabs(~ SalePrice_ntile + Neighborhood, data = main_dataset)
+myChisq
+
+summary(as.factor(main_dataset$Neighborhood))
+# Merging data with frequency lesser than 50 and changed its value as others
+main_dataset$Neighborhood[main_dataset$Neighborhood == "Greens" |
+                          main_dataset$Neighborhood == "GrnHill" | 
+                          main_dataset$Neighborhood == "Landmrk" | 
+                          main_dataset$Neighborhood == "Blueste" | 
+                          main_dataset$Neighborhood == "Blmngtn" | 
+                          main_dataset$Neighborhood == "BrDale" | 
+                          main_dataset$Neighborhood == "ClearCr" | 
+                          main_dataset$Neighborhood == "MeadowV" | 
+                          main_dataset$Neighborhood == "NPkVill" | 
+                          main_dataset$Neighborhood == "SWISU" | 
+                          main_dataset$Neighborhood == "Veenker" ] <- "Other"
+
+myChisq <- xtabs(~ SalePrice_ntile + as.factor(Neighborhood), data = main_dataset)
+myChisq
+
+tidy(chisq.test(myChisq))%>%
+  select(
+    method,
+    DF = parameter,
+    p.value,
+    statistic
+  )%>%
+  mutate(
+    statistic = round(statistic,2)
+  )
+
+```
+Findings :
+When performed Chi-square test for the first time, i was constantly getting warning message as " Chi-squared approximation may be incorrect". This was due to few neighborhood frequencies where below 50. So i merged the neighborhood with frequency below 50 and called the variable as others.
+
+Interpretation :
+A chi-square test was performed to examine the relation between Sale Price and Neighborhood of Ames housing. The relation between these variables was significant, X^2 (1,N=68) = 2384.89, p = 0. 
+
+Since the p.value is very significant, we will reject the null hypothesis.
+
+
+## Question-2 ANOVA Test: 
+Performing ANOVA test to examine if Sale Price varies by Neighborhood and Exterior.
+
+H0(null hypothesis) -> 
+  * Neighborhood and exterior of the house has no effect on Sale Price. Also there is no interaction affect on sale Price due to Neighborhood and Exterior.
+  
+H1(Alternative Hypothesis) ->
+  * Neighborhood and exterior of the house has effect on Sale Price. Also there is interaction affect on sale Price due to Neighborhood and Exterior.
+
+
+```{r , comment = " "}
+
+two_way_fit <- aov(SalePrice ~ (Neighborhood) * Exterior.1st, data=main_dataset)
+tidy(two_way_fit)%>%
+  mutate(
+    sumsq = signif(sumsq, digits = 2),
+    p.value = round(p.value,3),
+    statistic = round(statistic,3)
+    
+  )
+
+```
+Interpretation :
+A two-way ANOVA was performed to analyze the effect of Neighborhood and Exterior Covering of house on Sale Price.
+A two-way ANOVA revealed that -
+Simple main effects analysis showed that Neighborhood did have a statistically significant effect on Sale Price (p = 0).
+
+ 
+Simple main effects analysis showed that Exterior covering did have a statistically significant effect on Sale Price (p = 0).
+
+
+
+## Interaction Plot from ANOVA
+
+
+```{r, comment = " ", fig.width=22, fig.height=7, fig.align='center'}
+
+unique(main_dataset$Neighborhood)
+unique(main_dataset$Exterior.1st)
+
+## merging Exterior values lesser than 60 
+test <- main_dataset
+test$Exterior.1st[test$Exterior.1st == "AsbShng"|
+                    test$Exterior.1st == "AsphShn"|
+                    test$Exterior.1st == "BrkComm"|
+                    test$Exterior.1st == "CBlock"|
+                    test$Exterior.1st == "ImStucc"|
+                    test$Exterior.1st == "PreCast"|
+                    test$Exterior.1st == "Stone"|
+                    test$Exterior.1st == "Stucco"|
+                    test$Exterior.1st == "WdShing"] <- "Other"
+
+
+cols <- c("Alice Blue", 
+                         "Sky Blue",
+                         "Blanched Almond",
+                         "Dim Gray", 
+                         "Orange", 
+                         "Orchid", 
+                         "Light Slate Gray",
+                         "Honeydew",
+                         "Pink",
+                         "Chartreuse",
+                         "Floral White",
+                         "Thistle",
+                         "Saddle Brown",
+                         "Dark Green",
+                         "Orange Red",
+                         "Medium Sea Green")
+interaction.plot(x.factor = main_dataset$Neighborhood,
+                 trace.factor = main_dataset$Exterior.1st,
+                 response = main_dataset$SalePrice,
+                 fun = mean,
+                 type = "b",
+                 ylab = "Sale price of house",
+                 xlab = "Neighborhood",
+                 col = cols,
+                 lty = 1, #line type
+                 lwd = 2, #line width
+                 trace.label = "Exterior covering",
+                 pch=c(19),             ### Symbols for levels of trace var.
+                 fixed=TRUE,                    ### Order by factor order in data
+                 leg.bty = "o")
+ 
+```
+
+Interpretation :
+  
+  <> We can see from the above plot that there is a lot of interaction between neighborhood and exterior covering
+  
+  
+  <> We can learn from 2 way anova that the pvalue is below 0.05 which is significant and we can reject our null hypothesis.
+  
+
+## Conclusion
+  <>Using chi-sqaure we will reject our null hypothesis because there is relationship between Sale Price and neighborhood
+  <>Using Anova 2 way test we will reject our null hypothesis because there is relationship between Sale Price and neighborhood and exterior covering and also there is interaction affect on sale price due to neighborhood and exterior 
+
+
+## Reference
+<>Team, D. (2021, August 25). Chi-Square Test in R | Explore the Examples and Essential concepts! DataFlair. https://data-flair.training/blogs/chi-square-test-in-r/
+
+<>Two-way ANOVA Output and Interpretation in SPSS Statistics - Including Simple Main Effects | Laerd Statistics. (n.d.). Laerd Statistic. https://statistics.laerd.com/spss-tutorials/two-way-anova-using-spss-statistics-2.php

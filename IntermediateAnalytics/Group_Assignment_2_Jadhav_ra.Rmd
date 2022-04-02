@@ -1,0 +1,515 @@
+---
+title: "Group_Assignment_2"
+author: "Rahul Jadhav"
+date: "2/7/2022"
+output: 
+  html_document:
+     theme: cerulean
+     toc: true
+     toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+packages<-(c("dplyr","psych","ggplot2","fastDummies","broom","gtools", "scales","skimr","car","caret", "stargazer","effects"))
+package.check <- lapply(
+  packages,
+  function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+lapply(c(packages),require, character.only = TRUE)
+
+
+```
+
+## Data Preparation
+
+Read the Dataset using read.csv command.The main_dataset is the dataset which contains all the observation.
+Checked for Na values in dataset and removed all the Na values.
+Used random sampling and developed 5 sampled dataset with each having no similar observations.
+
+```{r}
+main_dataset <- read.csv('Chicago_Crimes_2001_to_2017_Part2.csv')
+
+## Assuming homicide, Assault, robbery, and sexual offense should be the categories for violent crimes. Let's put these columns together in a group.
+unique(main_dataset$Primary.Type)
+cleaned_dataset <- main_dataset %>%
+  mutate(
+    Primary.Type = ifelse(Primary.Type=="HOMICIDE","HOMICIDE",
+                          ifelse(Primary.Type=="CRIM SEXUAL ASSAULT" | 
+                                   Primary.Type=="SEX OFFENSE" , "SEXUAL OFFENCE",
+                                 ifelse(Primary.Type == "ASSAULT","ASSAULT",
+                                        ifelse(Primary.Type == "ROBBERY", "ROBBERY","Other"
+                                               )
+                                        )
+                                 )
+                          )
+  )
+
+cleaned_dataset <- filter(cleaned_dataset,cleaned_dataset$Primary.Type=="SEXUAL OFFENCE" | 
+                            cleaned_dataset$Primary.Type=="ASSAULT" | 
+                            cleaned_dataset$Primary.Type=="HOMICIDE" | 
+                            cleaned_dataset$Primary.Type=="ROBBERY" )
+
+
+
+
+cleaned_dataset <- cleaned_dataset %>%
+  select(Date,Block,Primary.Type,Location.Description,Arrest,Domestic,District,Ward,Year,Parts)
+
+sapply(cleaned_dataset, function(x) sum(is.na(x)))
+
+
+## convertion of few variables and data variable class from character to POSIXct (data-time)
+## Since arrest column had unique values as True, TRUE, False and FALSE. Replaced True with TRUE and False with FALSE
+
+cleaned_dataset <- cleaned_dataset %>%
+  mutate(
+    Arrest = ifelse(
+      Arrest == "False", "FALSE", 
+      ifelse(
+        Arrest == "True", "TRUE", cleaned_dataset$Arrest
+      )),
+    Domestic = ifelse(
+      Domestic == "False", "FALSE", 
+      ifelse(
+        Domestic == "True", "TRUE", cleaned_dataset$Domestic
+      )),
+    Date = as.POSIXlt(Date, format = "%m/%d/%Y %I:%M:%S %p")
+    )
+
+cleaned_dataset <- cleaned_dataset %>%
+  mutate(
+    Month = format(cleaned_dataset$Date, format="%m"),
+    Day = format(cleaned_dataset$Date, format="%d"),
+    Time = format(cleaned_dataset$Date, format="%H")) %>%
+  select(-Date)
+
+## converting all Qualitative data to factorial Data
+cleaned_dataset[sapply(cleaned_dataset, is.character)] <- lapply(
+  cleaned_dataset[sapply(
+    cleaned_dataset, 
+    is.character)]
+  ,as.factor)
+
+
+
+```
+## SUMMARY STATISTIC
+
+For numerical variable, we have created subset of numerical variable and categorical variable.
+
+
+```{r}
+## Summary Statistic of Continuous variables
+psych::describe(cleaned_dataset) %>%
+  dplyr::select(count = n,
+         Mean = mean,
+         Standard_Deviation = sd,
+         )%>%
+  mutate(
+    Coefficient_Variation = Standard_Deviation/Mean
+  )%>% na.omit()
+
+
+## Summary Statistic of Quantiative Variables
+summary(cleaned_dataset[sapply(cleaned_dataset , is.factor)])
+
+```
+
+
+
+## BASIC ANALYSIS
+### Primary type of crimes 
+
+```{r}
+
+group_by_primary_type <- cleaned_dataset %>%
+  group_by(Primary.Type,Domestic) %>%
+  summarise(count = n())%>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange(desc(percentage))
+
+
+ggplot(group_by_primary_type,aes(x=Primary.Type,y=count,fill=Domestic))+
+  geom_bar(position="dodge", stat="identity")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_y_continuous(label = comma)+
+  ggtitle("Bar Plot : 01 Top 10 crimes reported in Chicago with Domestic Violence")
+
+group_by_primary_type <- cleaned_dataset %>%
+  group_by(Primary.Type,Arrest) %>%
+  summarise(count = n())%>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange(desc(percentage)) 
+
+
+ggplot(group_by_primary_type,aes(x=Primary.Type,y=count,fill= Arrest))+
+  geom_bar(position="dodge", stat="identity")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_y_continuous(label = comma)+
+  ggtitle("Bar Plot : 02 Crimes reportd in chicago with Arrested Data")
+
+
+```
+
+### TimeBased Crime rate
+```{r,figures-side, fig.show="hold", out.width="50%", results='hide', comment = " ", }
+
+group_by_Year <- cleaned_dataset %>%
+  group_by(Year,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Year))
+
+
+ggplot(group_by_Year,aes(x=Year,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 03 Yearly Crime rate of Chicago from 2001 to 2017")
+
+
+group_by_Month <- cleaned_dataset %>%
+  group_by(Month,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Month))
+
+
+ggplot(group_by_Month,aes(x=Month,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 03 Monthly Crime rate of Chicago from 2001 to 2017")
+
+group_by_Day <- cleaned_dataset %>%
+  group_by(Day,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Day))
+
+
+ggplot(group_by_Day,aes(x=Day,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 03 Monthly Crime rate of Chicago from 2001 to 2017")
+
+group_by_Time <- cleaned_dataset %>%
+  group_by(Time,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange((Time))
+
+
+ggplot(group_by_Time,aes(x=Time,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  theme(axis.text.x = element_text(angle = 25, vjust = 0.5, hjust=1))+
+  ggtitle("Bar Plot : 03 Monthly Crime rate of Chicago from 2001 to 2017")
+
+
+```
+
+### District Crime rate
+```{r}
+group_by_District <- cleaned_dataset %>%
+  group_by(District,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  )
+ggplot(group_by_District,aes(x=District,y=count, fill= Domestic))+
+  geom_bar(stat="identity")+
+  ggtitle("Bar Plot : 05 District wise cases")+
+  xlab("District")
+
+```
+
+
+## CHI-SQUARE ANALYSIS
+Performing Chi-Square test to examine if Sale Price varies by Neighborhood
+
+H0 (null hypothesis)        -> There is no relationship between District and Primary type of Crime
+H1 (Alternative Hypothesis) -> There is relationship between District and Primary type of Crime
+```{r}
+chi <- cleaned_dataset
+myChisq <- xtabs(~ as.factor(Primary.Type) + as.factor(District), data = chi)
+
+tidy(chisq.test(myChisq))%>%
+  select(
+    method,
+    DF = parameter,
+    p.value,
+    statistic
+  )%>%
+  mutate(
+    statistic = round(statistic,2)
+  )
+```
+
+Interpretation :
+A chi-square test was performed to examine the relation between District and Primary type of crimes in Chicago. The relation between these variables was significant, X^2 (1,N=66) = 2704.5, p = 0. 
+
+Since the p.value is very significant, we will reject the null hypothesis.
+
+
+## 2 WAY ANOVA TEST 
+Performing ANOVA test to examine if District varies by Primary type of crime and Arrests.
+
+H0(null hypothesis) -> 
+  * Primary type of crime and Arrest has no effect on District. Also there is no interaction affect on District due to Primary type of crime and Arrests.
+  
+H1(Alternative Hypothesis) ->
+  * Primary type of crime and Arrest has effect on District. Also there is interaction affect on District due to Primary type of crime and Arrests.
+
+```{r }
+two_way_fit <- aov(District ~as.factor(Primary.Type) * as.factor(Arrest) , data=cleaned_dataset)
+tidy(two_way_fit)%>%
+  mutate(
+    sumsq = signif(sumsq, digits = 2),
+    p.value = round(p.value,3),
+    statistic = round(statistic,3)
+    
+  )
+
+```
+
+Interpretation :
+A two-way ANOVA was performed to analyze the effect of Primary type of crime and Arrest on District.
+A two-way ANOVA revealed that -
+Simple main effects analysis showed that Primary type of crime did have a statistically significant effect on District (p = 0).
+
+ 
+Simple main effects analysis showed that Arrest did have a statistically significant effect on Sale Price (p = 0).
+
+## INTERACTION PLOT FROM ANOVA
+
+
+```{r, comment = " ", fig.width=22, fig.height=7, fig.align='center'}
+## merging Exterior values lesser than 60 
+test <- group_by_primary_type <- cleaned_dataset %>%
+  group_by(Primary.Type,Domestic,District) %>%
+  summarise(count = n())%>%
+  mutate(
+    porportion = round(count/sum(count),2),
+    percentage = round((count/sum(count)*100),2)
+  ) %>%
+  arrange(desc(percentage))
+interaction.plot(x.factor = test$District,
+                 trace.factor = test$Primary.Type,
+                 response = test$count,
+                 fun = mean,
+                 type = "b",
+                 ylab = "Count",
+                 xlab = "District",
+                 col = c("red","green","blue","black"),
+                 lty = 1, #line type
+                 lwd = 2, #line width
+                 trace.label = "Primary type crimes",
+                 pch=c(19),             ### Symbols for levels of trace var.
+                 fixed=TRUE,                    ### Order by factor order in data
+                 leg.bty = "o")
+ 
+```
+
+
+## Spliting Dataset into train and test sets
+
+Here we are going to sample our main dataset into 70-30 ratio as Train and test dataset respectively.
+```{r}
+set.seed(123)
+trainIndex <- createDataPartition(cleaned_dataset$Arrest, p= 0.70, list = FALSE)
+train <- cleaned_dataset[trainIndex,]
+test <- cleaned_dataset[-trainIndex,]
+```
+
+## Linear Regression Model 
+Here we are going to check if crime rate has anything to do with the District, Arrest Made.
+
+```{r}
+Lm_train_dataset <- train %>%
+  group_by(District, Arrest,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    Arrest = ifelse(Arrest == "TRUE",1,0),
+    Domestic = ifelse(Domestic == "TRUE",1,0)    
+  )
+
+Lm_test_dataset <- test %>%
+  group_by(District, Arrest,Domestic) %>%
+  summarise(count = n()) %>%
+  mutate(
+    Arrest = ifelse(Arrest == "TRUE",1,0),
+    Domestic = ifelse(Domestic == "TRUE",1,0) 
+  )
+
+```
+
+### Linear Regression Summary of Train Dataset
+
+```{r}
+Model1 <- (lm(count ~ District * Arrest * Domestic , data = Lm_train_dataset))
+summary(Model1)
+```
+From the above summary of the linear regression model for train dataset developed by us you can see that the R squared value is 0.84. that means our model is 84% fit for predicting the crime rate.
+The is not much difference in the R-square value and the Adjusted R-squared Value.
+Also the Pvalue is below the significant level (0.05)
+This model explains a lot of variation within data and is significant. Thus this model is best fit for Predicting the Crime rate of Chicago.
+
+### Linear Regression Summary of Test Dataset
+
+```{r}
+Model2 <- (lm(count ~ District * Arrest* Domestic  , data = Lm_test_dataset))
+summary(Model2)
+```
+From the above summary of the linear regression model for test sample dataset developed by us you can see that the R squared value is 0.84. that means our model is 84% fit for predicting the crime rate.
+The is not much difference in the R-square value and the Adjusted R-squared Value.
+Also the P-value is below the significant level (0.05)
+This model explains a lot of variation within data and is significant. Thus this model is best fit for Predicting the Crime rate of Chicago.
+
+### Residual Plotting of the models
+
+```{r,fig.show="hold", out.width="50%", results='hide', comment = " ", }
+Model1_res <- resid(Model1)
+Model2_res <- resid(Model2)
+
+plot(fitted(Model1), Model1_res) + 
+  abline(0,0)+
+  title("PLOT - 01- Residual Of TRAIN dataset")
+
+plot(fitted(Model2), Model2_res) + 
+  abline(0,0)+
+  title("PLOT - 02- Residual of TEST dataset")
+```
+
+<ul>
+<li>The response variable for this model was Crime rate and the predictor variables were District ,Domestic and Arrests</li>
+<li>observations are evenly distributed</li>
+</ul>
+
+### Q-Q PLOT
+
+```{r,fig.show="hold", out.width="50%", results='hide', comment = " "}
+qqPlot(Model1)+
+  title("Q-Q PLOT MODEL 1")
+
+qqPlot(Model2)+
+  title("Q-Q PLOT MODEL 2")
+```
+
+From plot of model 1 and model 2 we can wee that most of the observation follow the normal line and there are less outliers
+
+
+
+
+### MULTI COLLINEARITY
+```{r, comment = " ", }
+## model 1
+vif(Model1)
+
+## model 2
+vif(Model2)
+```
+Multicollinearity help us to know if the predictor variables (independent) have correlation or not.
+If the value is below 5 we can say that there is not correlation between the Predictor variables.
+
+
+
+
+
+
+
+
+
+## Logistic Regression
+
+We developed 2 model, one with variables having highest correlation and one with variables having lowest correlation to learn about difference between the best fit and worst fit model
+
+```{r}
+
+logistic_dataset_train <- train %>%
+  group_by(Primary.Type,Domestic,Arrest,District) %>%
+  summarise(count = n())%>%na.omit()
+
+logistic_dataset_test <- train %>%
+  group_by(Primary.Type,Domestic,Arrest,District) %>%
+  summarise(count = n())%>%na.omit()
+
+model3 <- glm(Arrest ~ .,data = logistic_dataset_train, family = "binomial")
+summary(model3)
+
+model4 <- glm(Arrest ~. ,data = logistic_dataset_test, family = "binomial")
+summary(model4)
+
+```
+
+<ul>
+<li>The intercept for our Model1 and model2 are 4.39 and </li>
+<li>The Arrests decreases by 3.04 if the case type is Homicide as compared to Arrests made in Assault Cases</li>
+<li>The Arrests decreases by 2.15 if the case type is Robbery</li>
+<li>The Arrests decreases by 2.90 if the case type is Robbery</li>
+<li>The Arrests decreases by 1.41 if the case is of Domestic violence</li>
+</ul>
+
+###The Ratio of computed odds ratio:
+
+For showing the table with coefficients on the odds scale we have used the stargazer function. 
+
+```{r, comment= " ", out.width="50%"}
+coef_Model1 <-stargazer(model3,odd.ratio = TRUE ,type = "text")
+coef_Model2 <-stargazer(model4,odd.ratio = TRUE ,type = "text")
+```
+
+The computed odds ratio of the Module generate using test and train data are similar.
+
+
+### Effect Plots
+
+The effect plots show us how predicted probabilities change when we change our independent variables.
+
+```{r, fig.width= 20}
+
+plot(allEffects(model3))
+
+```
+
+From the above plotting we can see the effects in arrest been made based on Type of Crime, Domestic violence, Districts wise and counts.
+<ul>
+<li>From 1st plot  you can see that the arrest been made in cases like Violent is more than rest of the cases.</li>
+<li>From 2nd plot  you can see that the arrest been made in cases When domestic violence is presence is less.</li>
+<li>From 3rd plot  you can see that the arrest been made in cases When the district cases(from 1 to 10) is in decreasing trend.</li>
+<li>From 4th plot  you can see that the arrest been made in cases When the cases increases the arrests made are decreasing.</li>
+</ul>
+
+
+reference :
+<ul>
+<li> Multiple and Logistic Regression in R [DataCamp]</li>
+<li>StatQuest: Logistic Regression. (2018, March 5). YouTube. https://www.youtube.com/watch?v=yIYKR4sgzI8&list=PLblh5JKOoLUKxzEP5HA2d-Li7IJkHfXSe</li>
+<li>» Interpreting Residual Plots to Improve Your Regression. (2021, April 12). Qualtrics. https://www.qualtrics.com/support/stats-iq/analyses/regression-guides/interpreting-residual-plots-improve-regression/</li>
+<li>Residual plots | Exploring bivariate numerical data | AP Statistics | Khan Academy. (2017, July 12). YouTube. https://www.youtube.com/watch?v=VamMrPZ-8fc</li>
+<li>Z. (2021, April 22). How to Create a Residual Plot in R. Statology. https://www.statology.org/residual-plot-r/ </li>
+<li>Visualizing two variables - Characterizing bivariate relationships. (n.d.). DataCamp. https://campus.datacamp.com/courses/correlation-and-regression-in-r/visualizing-two-variables?ex=4</li>
+</ul>
